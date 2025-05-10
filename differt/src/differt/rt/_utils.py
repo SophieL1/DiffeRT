@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Iterator, Sized
 from functools import cache
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, Tuple
 
 import equinox as eqx
 import jax
@@ -265,10 +265,6 @@ def rays_intersect_triangles(
     edge_1 = vertex_1 - vertex_0
     edge_2 = vertex_2 - vertex_0
 
-    # [*batch 3]
-    nan_mask = jnp.isnan(ray_directions).any(axis=-1)
-
-    #h = jnp.where(nan_mask[:, None], 0.0, jnp.cross(ray_directions, edge_2))
     h = jnp.cross(ray_directions, edge_2)
 
     # [*batch]
@@ -352,18 +348,15 @@ def rays_intersect_triangles_smooth(
     edge_1 = vertex_1 - vertex_0
     edge_2 = vertex_2 - vertex_0
 
-    # [*batch 3]
-    nan_mask = jnp.isnan(ray_directions).any(axis=-1)
-
-    #h = jnp.where(nan_mask[:, None], 0.0, jnp.cross(ray_directions, edge_2))
     h = jnp.cross(ray_directions, edge_2)
 
     # [*batch]
     a = dot(h, edge_1)
+    a = jnp.where(a == 0.0, jnp.inf, a)  # Avoid division by zero
 
     hit = jnp.where(jnp.abs(a) > epsilon, 1.0, 0.0)
 
-    f = jnp.where(a == 0.0, 0, 1.0 / a)
+    f = 1.0 / a
     s = ray_origins - vertex_0
     u = f * dot(s, h)
 

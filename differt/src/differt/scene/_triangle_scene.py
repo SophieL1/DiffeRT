@@ -804,6 +804,57 @@ class TriangleScene(eqx.Module):
         return eqx.tree_at(
             lambda s: s.transmitters, self, jnp.stack((x, y, z), axis=-1)
         )
+        
+    def with_transmitters_grid_gaussian(
+        self,
+        m: int = 50,
+        n: int | None = None,
+        *,
+        N: int = 10,
+        sigma: float = 0.1,
+        height: Float[ArrayLike, " "] = 1.5
+    ) -> Self:
+        """
+        Return a copy of the scene with a 2D grid of transmitter *clusters* placed at a fixed height.
+        Each grid point has N transmitters sampled from a Gaussian distribution centered at that point.
+
+        Args:
+            m: Number of grid samples along x.
+            n: Number of grid samples along y. Defaults to m if not provided.
+            N: Number of transmitters per grid point.
+            sigma: Standard deviation of Gaussian noise around each grid point.
+            height: Fixed height for all transmitters.
+
+        Returns:
+            New scene with shape (m, n, N, 3) transmitter array.
+        """
+        if n is None:
+            n = m
+
+        dtype = self.mesh.vertices.dtype
+        (min_x, min_y, _), (max_x, max_y, _) = self.mesh.bounding_box
+
+        grid_x = jnp.linspace(min_x, max_x, m, dtype=dtype)
+        grid_y = jnp.linspace(min_y, max_y, n, dtype=dtype)
+        gx, gy = jnp.meshgrid(grid_x, grid_y)  # (n, m)
+
+        # (n, m, 1)
+        gx = gx[..., None]
+        gy = gy[..., None]
+
+        key = jax.random.PRNGKey(1234)
+        noise_key_x, noise_key_y = jax.random.split(key)
+
+        noise_x = jax.random.normal(noise_key_x, shape=(n, m, N)) * sigma
+        noise_y = jax.random.normal(noise_key_y, shape=(n, m, N)) * sigma
+
+        x = gx + noise_x
+        y = gy + noise_y
+        z = jnp.full_like(x, height)
+
+        transmitters = jnp.stack((x, y, z), axis=-1)  # shape (n, m, N, 3)
+
+        return eqx.tree_at(lambda s: s.transmitters, self, transmitters)
 
     def with_receivers_grid(
         self, m: int = 50, n: int | None = 50, *, height: Float[ArrayLike, " "] = 1.5
